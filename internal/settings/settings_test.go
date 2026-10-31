@@ -99,6 +99,25 @@ func TestRoundTrip(t *testing.T) {
 	if Save(Settings{}) != nil || Load().CodexWarmAt != "" {
 		t.Fatal("no time is off")
 	}
+	// the zone those times are read in: an IANA name, trimmed, empty for
+	// this computer's clock; an offset is not a name
+	if Save(Settings{WarmZone: " Asia/Shanghai "}) != nil || Load().WarmZone != "Asia/Shanghai" {
+		t.Fatalf("warm zone not kept: %q", Load().WarmZone)
+	}
+	if Save(Settings{WarmZone: "UTC"}) != nil || Load().WarmZone != "UTC" {
+		t.Fatalf("UTC not kept: %q", Load().WarmZone)
+	}
+	for _, bad := range []string{"UTC+8", "Local", "Not/AZone"} {
+		if Save(Settings{WarmZone: bad}) == nil {
+			t.Fatalf("bad zone %q accepted", bad)
+		}
+	}
+	if Load().WarmZone != "UTC" {
+		t.Fatalf("a refused zone replaced the saved one: %q", Load().WarmZone)
+	}
+	if Save(Settings{}) != nil || Load().WarmZone != "" {
+		t.Fatal("an empty zone is this computer's clock")
+	}
 	// the menu bar's usage: every 3 minutes unless told, left or used
 	if s := Load(); s.TrayUsageEvery != 3 || s.QuotaLeft {
 		t.Fatalf("tray defaults: %+v", s)

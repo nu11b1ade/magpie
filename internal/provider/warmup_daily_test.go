@@ -2,10 +2,13 @@ package provider
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/yetone/magpie/internal/settings"
 )
 
 // a zone with no daylight saving, as a day's start is the local clock's
@@ -259,6 +262,61 @@ func TestWeeklyWarmUpWaitsForTheDay(t *testing.T) {
 		if rs := f.runAt(t, filepath.Join(t.TempDir(), "warmup.json"), which, "09:30"); len(rs) != 1 || len(rs[0].Windows) != 1 || rs[0].Windows[0] != "7 days" {
 			t.Errorf("%s: 5-hour window running, sent %+v, want the weekly warm-up at once", which, rs)
 		}
+	}
+}
+
+// A named zone reads 06:00 there, whatever zone now is in. Unset, 06:00
+// is now's own zone, as before. A name the file has that magpie doesn't
+// know never comes due.
+func TestWarmAtInTheChosenZone(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	idleAt := func(now time.Time) QuotaWindow { return win("5 hours", fiveHours, 0, now.Add(fiveHours)) }
+	dueAt := func(now time.Time) (string, bool) {
+		t.Helper()
+		day, due := dailyDue(times("06:00"), "", asOf(idleAt(now), now), now)
+		if !due {
+			day = ""
+		}
+		return day, due
+	}
+	// 06:00 UTC, no zone saved: the clock the instant is in
+	utcSix := time.Date(2026, 9, 28, 6, 0, 0, 0, time.UTC)
+	if day, due := dueAt(utcSix); !due || day != "2026-09-28 06:00" {
+		t.Fatalf("unset zone: due %v for %q", due, day)
+	}
+	if err := settings.Save(settings.Settings{WarmZone: "Asia/Shanghai"}); err != nil {
+		t.Fatal(err)
+	}
+	// 06:00 UTC is 14:00 in Shanghai, past the hour after 06:00 there
+	if _, due := dueAt(utcSix); due {
+		t.Fatal("06:00 UTC taken as Shanghai 06:00")
+	}
+	// 22:00 UTC on the 27th is 06:00 on the 28th in Shanghai
+	shanghaiSix := time.Date(2026, 9, 27, 22, 0, 0, 0, time.UTC)
+	if day, due := dueAt(shanghaiSix); !due || day != "2026-09-28 06:00" {
+		t.Fatalf("Shanghai: due %v for %q", due, day)
+	}
+	early := shanghaiSix.Add(-time.Minute)
+	if _, due := dueAt(early); due {
+		t.Fatal("due a minute before Shanghai 06:00")
+	}
+	next, ok := nextDayStart(times("06:00"), shanghaiSix)
+	loc, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := time.Date(2026, 9, 29, 6, 0, 0, 0, loc)
+	if !ok || !next.Equal(want) {
+		t.Fatalf("next %v, want %v", next, want)
+	}
+	if err := os.MkdirAll(settings.Dir(), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(settings.Path(), []byte(`{"warmZone":"Not/AZone"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, due := dueAt(shanghaiSix); due {
+		t.Fatal("an unknown zone fired the warm-up")
 	}
 }
 

@@ -77,6 +77,7 @@
     <a href="#web">ブラウザ UI</a>
     <a href="#signin">サブスクリプションにサインイン</a>
     <a href="#volume">保存されるもの</a>
+    <a href="#zone">タイムゾーン</a>
     <a href="#env">環境変数</a>
     <a href="#share">ゲートウェイキーとほかのマシン</a>
     <a href="#compose">NAS で Docker Compose</a>
@@ -156,9 +157,35 @@ docker logs magpie</pre>
     </table></div>
     <p>古いイメージで作ったボリュームもそのまま使えます。magpie は起動時に足りないフォルダを作ります。古いイメージで行ったサインイン（ボリュームの外に保存されていたもの）だけはやり直しが必要です。</p>
 
+    <h2 id="zone"><a class="anchor" href="#zone">タイムゾーン</a></h2>
+    <p>イメージは <code>TZ</code> を設定しないので、時計は UTC です。Docker はホストのタイムゾーンをコンテナにコピーしません。壁時計が <code>Asia/Shanghai</code> のマシンでも、指定するまで magpie は UTC で動きます。毎日のウォームアップの <code>06:00</code> はその時計で読まれるので、上海の朝とは約 8 時間ずれます。</p>
+    <p>UTC のままでよいときはイメージの既定のままにします。合わせるには、<code>TZ</code> に IANA 名を入れるか（magpie はタイムゾーンデータを同梱しているので、イメージに <code>tzdata</code> は要りません）、ホストのゾーンファイルを読み取り専用でマウントします。どちらか一つで足ります。Docker Desktop for Mac のマウントは Linux VM のゾーンで、多くの場合 UTC であり、Mac のメニューバーの時計ではありません。欲しいゾーンがホストのファイルと違うときは <code>TZ</code> を使います。</p>
+    <div class="code">
+      <span class="lang">Shell</span>
+      <button class="copy" data-copy="ex-tz">コピー</button>
+      <pre id="ex-tz">docker run -d --name magpie --restart unless-stopped \
+  -e TZ=Asia/Shanghai \
+  -p 127.0.0.1:3425:3425 -p 127.0.0.1:3430:3430 \
+  -e MAGPIE_WEB_KEY=$(openssl rand -hex 16) \
+  -v magpie-config:/config \
+  ghcr.io/yetone/magpie:latest web --addr 0.0.0.0:3430 --no-open</pre>
+    </div>
+    <p>または Compose の <code>volumes</code> に:</p>
+    <div class="code">
+      <span class="lang">compose.yaml</span>
+      <button class="copy" data-copy="ex-tz-mount">コピー</button>
+      <pre id="ex-tz-mount">    volumes:
+      - ./config:/config
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro</pre>
+    </div>
+    <p><code>/etc/timezone</code> は Debian/Ubuntu のファイルで、ない環境もあります。<code>TZ</code> がないとき magpie が読むのは <code>/etc/localtime</code> です。</p>
+    <p><span class="ui">設定</span> → <span class="ui">利用枠</span> → <span class="ui">タイムゾーン</span> はコンテナの時計とは別です。既定の<span class="ui">このコンピュータ</span>はその時計に従います。<code>Asia/Shanghai</code> を選ぶと、プロセスの時計が UTC のままでもウォームアップの <code>06:00</code> は上海の <code>06:00</code> です。毎日のチェックインは各ベンダーの日付のままで、北京時間です。</p>
+
     <h2 id="env"><a class="anchor" href="#env">環境変数</a></h2>
     <div class="table-wrap"><table>
       <tr><th>変数</th><th>役割</th></tr>
+      <tr><td><code>TZ</code></td><td>コンテナのタイムゾーン。IANA 名（例: <code>Asia/Shanghai</code>）。未設定なら時計は UTC。<a href="#zone">タイムゾーン</a>を参照。</td></tr>
       <tr><td><code>MAGPIE_ADDR</code></td><td>ゲートウェイが待ち受けるアドレス。イメージでは <code>0.0.0.0:3425</code> に設定され、公開したポートから届きます。</td></tr>
       <tr><td><code>MAGPIE_PUBLIC_URL</code></td><td>ほかのマシンがゲートウェイに届くアドレス。例：<code>http://192.168.1.20:3425</code>（ホストや NAS のアドレスと公開ポート）、またはリバースプロキシのベース URL。コンテナ内の magpie には Docker 自身の <code>172.17.x</code> のアドレスしか見えません。これを設定すると、表示されるアドレスが使うべきものになります。</td></tr>
       <tr><td><code>MAGPIE_WEB_KEY</code></td><td>ブラウザ UI のキー。再起動しても変わりません（16 文字以上）</td></tr>
@@ -193,8 +220,10 @@ docker logs magpie</pre>
     environment:
       MAGPIE_PUBLIC_URL: http://&lt;nas-address&gt;:3425
       MAGPIE_WEB_KEY: &lt;random-key&gt;
+      <span class="c"># TZ: Asia/Shanghai</span>
     volumes:
       - ./config:/config
+      <span class="c"># - /etc/localtime:/etc/localtime:ro</span>
     command: [web, --addr, 0.0.0.0:3430, --no-open]</pre>
     </div>
     <p>続いて <code>sudo chown -R 65532:65532 ./config</code>、<code>docker compose up -d</code> を実行し、SSH トンネル経由で <code>http://127.0.0.1:3430/?k=&lt;random-key&gt;</code> を開いて、プロバイダを追加し、マシンごとにゲートウェイキーを作ります。ほかのマシンからゲートウェイに届くようにするには、その行を <code>"3425:3425"</code>（または NAS の LAN や VPN のアドレス）に変えて、もう一度 <code>docker compose up -d</code> を実行します。</p>

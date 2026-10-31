@@ -77,6 +77,7 @@
     <a href="#web">The browser UI</a>
     <a href="#signin">Sign in to subscriptions</a>
     <a href="#volume">What is kept</a>
+    <a href="#zone">Time zone</a>
     <a href="#env">Environment</a>
     <a href="#share">Gateway keys and other machines</a>
     <a href="#compose">Docker Compose on a NAS</a>
@@ -156,9 +157,35 @@ docker logs magpie</pre>
     </table></div>
     <p>A volume made by an older image keeps working: magpie adds the folders it lacks when it starts. Only sign-ins made with that older image, which lived outside the volume, have to be made again.</p>
 
+    <h2 id="zone"><a class="anchor" href="#zone">Time zone</a></h2>
+    <p>The image does not set <code>TZ</code>, so its clock is UTC. Docker does not copy the host’s zone in: a machine whose wall clock is <code>Asia/Shanghai</code> still runs magpie on UTC until you say otherwise. A daily warm-up time such as <code>06:00</code> is read on that clock, about eight hours off a Shanghai morning.</p>
+    <p>Leave the image on UTC when that is the clock you want. To align it, set <code>TZ</code> to an IANA name (magpie carries its own zone database, so the image needs no <code>tzdata</code> package), or mount the host’s zone files read-only. One is enough. On Docker Desktop for Mac the mount is the Linux VM’s zone, often UTC, not the Mac’s. Prefer <code>TZ</code> when the zone you want is not the host file’s.</p>
+    <div class="code">
+      <span class="lang">Shell</span>
+      <button class="copy" data-copy="ex-tz">Copy</button>
+      <pre id="ex-tz">docker run -d --name magpie --restart unless-stopped \
+  -e TZ=Asia/Shanghai \
+  -p 127.0.0.1:3425:3425 -p 127.0.0.1:3430:3430 \
+  -e MAGPIE_WEB_KEY=$(openssl rand -hex 16) \
+  -v magpie-config:/config \
+  ghcr.io/yetone/magpie:latest web --addr 0.0.0.0:3430 --no-open</pre>
+    </div>
+    <p>Or, in Compose, under <code>volumes</code>:</p>
+    <div class="code">
+      <span class="lang">compose.yaml</span>
+      <button class="copy" data-copy="ex-tz-mount">Copy</button>
+      <pre id="ex-tz-mount">    volumes:
+      - ./config:/config
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro</pre>
+    </div>
+    <p><code>/etc/timezone</code> is a Debian/Ubuntu file and may be absent. <code>/etc/localtime</code> alone is what magpie reads when <code>TZ</code> is unset.</p>
+    <p><span class="ui">Settings</span> → <span class="ui">Allowances</span> → <span class="ui">Time zone</span> is separate from the container clock. <span class="ui">This computer</span>, the default, follows that clock. Pick <code>Asia/Shanghai</code> and a warm-up’s <code>06:00</code> is Shanghai’s <code>06:00</code> even while the process clock stays UTC. Daily check-in still follows each vendor’s day, which is Beijing.</p>
+
     <h2 id="env"><a class="anchor" href="#env">Environment</a></h2>
     <div class="table-wrap"><table>
       <tr><th>Variable</th><th>What it does</th></tr>
+      <tr><td><code>TZ</code></td><td>the container’s time zone, an IANA name such as <code>Asia/Shanghai</code>. Unset, the clock is UTC. See <a href="#zone">Time zone</a>.</td></tr>
       <tr><td><code>MAGPIE_ADDR</code></td><td>where the gateway listens. The image sets <code>0.0.0.0:3425</code>, so the published port reaches it.</td></tr>
       <tr><td><code>MAGPIE_PUBLIC_URL</code></td><td>the address other machines reach the gateway at, such as <code>http://192.168.1.20:3425</code> (the host’s or the NAS’s, on the published port), or a reverse proxy’s base URL. In the container magpie sees only Docker’s own <code>172.17.x</code> address; with this set, the address it shows and prints is the one to use.</td></tr>
       <tr><td><code>MAGPIE_WEB_KEY</code></td><td>the browser UI’s key, kept across restarts (16+ characters)</td></tr>
@@ -193,8 +220,10 @@ docker logs magpie</pre>
     environment:
       MAGPIE_PUBLIC_URL: http://&lt;nas-address&gt;:3425
       MAGPIE_WEB_KEY: &lt;random-key&gt;
+      <span class="c"># TZ: Asia/Shanghai</span>
     volumes:
       - ./config:/config
+      <span class="c"># - /etc/localtime:/etc/localtime:ro</span>
     command: [web, --addr, 0.0.0.0:3430, --no-open]</pre>
     </div>
     <p>Then: <code>sudo chown -R 65532:65532 ./config</code>, <code>docker compose up -d</code>, open <code>http://127.0.0.1:3430/?k=&lt;random-key&gt;</code> through an SSH tunnel, add your providers and make a gateway key for each machine. For other machines to reach the gateway, change its line to <code>"3425:3425"</code> (or the NAS’s LAN or VPN address) and run <code>docker compose up -d</code> again.</p>

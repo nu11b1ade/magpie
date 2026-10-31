@@ -24,6 +24,9 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	// zones named in settings, on Windows and in the Docker image, which
+	// ship no zone database of their own
+	_ "time/tzdata"
 
 	"github.com/yetone/magpie/internal/appdir"
 	"github.com/yetone/magpie/internal/catalog"
@@ -271,6 +274,16 @@ type Settings struct {
 	// apart take over from one another, where at one time they run out
 	// together (#957). An account not in it has CodexWarmAt.
 	CodexWarmAtOf map[string]string `json:"codexWarmAtOf,omitempty"`
+	// WarmZone is the IANA time zone those times of day are read in
+	// ("Asia/Shanghai"): CodexWarmAts, ClaudeWarmAts and CodexWarmAtOf.
+	// Empty, the default, is this computer's clock — the container's in
+	// Docker, UTC unless TZ or /etc/localtime says otherwise — so a 06:00
+	// typed for Shanghai is Shanghai's 06:00 once the zone is named, and
+	// stays the machine's until then. A name magpie doesn't know is
+	// refused on save; one written into the file by hand makes the times
+	// never come (provider.warmLoc). Check-in is not this: a vendor's day
+	// stays that vendor's (Beijing).
+	WarmZone string `json:"warmZone,omitempty"`
 	// CodexAutoReset are the ChatGPT accounts (lower-case) that spend one
 	// of their rate-limit resets by themselves once their weekly window is
 	// used up and no other account can take the request: at most one a
@@ -1771,6 +1784,9 @@ func saveOwn(s Settings, recording, reads bool) error {
 			return fmt.Errorf("%s's warm-up time of day must look like 06:00 or be off, not %q", user, at)
 		}
 	}
+	if !validZone(s.WarmZone) {
+		return fmt.Errorf("a warm-up time zone is an IANA name such as Asia/Shanghai, or empty for this computer's clock, not %q", s.WarmZone)
+	}
 	if !slices.Contains(TrayEvery, s.TrayUsageEvery) {
 		return fmt.Errorf("the menu bar's usage is refreshed every %v minutes, not %d", TrayEvery, s.TrayUsageEvery)
 	}
@@ -2003,6 +2019,7 @@ func (s Settings) normal() Settings {
 	if s.ClaudeWarmup == "off" {
 		s.ClaudeWarmup = ""
 	}
+	s.WarmZone = strings.TrimSpace(s.WarmZone)
 	if s.TrayUsageEvery == 0 {
 		s.TrayUsageEvery = 3
 	}
@@ -2053,6 +2070,22 @@ func (s Settings) normal() Settings {
 		}
 	}
 	return s
+}
+
+// validZone reports whether name is a time zone warm-up times can be
+// read in: empty for this computer's clock, or an IANA name Go knows.
+// "UTC+8" and "Local" are not names.
+func validZone(name string) bool {
+	if name == "" {
+		return true
+	}
+	// LoadLocation takes "Local" as this process's zone, which is not a
+	// name to store: empty already means this computer's clock.
+	if name == "Local" {
+		return false
+	}
+	_, err := time.LoadLocation(name)
+	return err == nil
 }
 
 // Clock reads a time of day, "06:00" (seconds, as a time field may send

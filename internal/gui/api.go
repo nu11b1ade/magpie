@@ -414,6 +414,10 @@ type settingsJSON struct {
 	// NoAccountsEnv is MAGPIE_NO_ACCOUNTS set, which keeps account
 	// discovery off for this run whatever Settings has (#1535)
 	NoAccountsEnv bool `json:"noAccountsEnv,omitempty"`
+	// LocalZone is this computer's IANA zone when it has one (provider.LocalZone):
+	// what Settings' Time zone shows for "This computer", the container's
+	// zone in Docker. Empty when the clock has no IANA name.
+	LocalZone string `json:"localZone,omitempty"`
 	// whether the page is in gateway mode and why (gatewayMode); Web says
 	// it is served by magpie web, where the mode can be set
 	GatewayOn  bool   `json:"gatewayOn,omitempty"`
@@ -707,7 +711,8 @@ func codexWindowUnder(st settings.Settings, model string) *codexRunWindow {
 }
 
 func settingsState() settingsJSON {
-	s := settingsJSON{Settings: settings.Load(), Version: Version, Dir: tilde(settings.Dir()), Portable: settings.Portable() != "", Gateway: gateway.URL()}
+	s := settingsJSON{Settings: settings.Load(), Version: Version, Dir: tilde(settings.Dir()), Portable: settings.Portable() != "", Gateway: gateway.URL(),
+		LocalZone: provider.LocalZone()}
 	s.AddrEnv = os.Getenv("MAGPIE_ADDR")
 	s.Builtins = builtinsState()
 	s.PanelKeys = panelKeysState()
@@ -1422,6 +1427,12 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		// nor whether a value masked for the first time is told (Must2333)
 		if _, sent := fields["maskAlert"]; !sent {
 			in.MaskAlert = cur.MaskAlert
+		}
+		// nor the zone daily warm-up times are read in: a page from before
+		// it leaves the choice, and an empty one sent on purpose is this
+		// computer's clock
+		if _, sent := fields["warmZone"]; !sent {
+			in.WarmZone = cur.WarmZone
 		}
 		in.AgentOrder, in.AgentsHidden, in.AgentsShown = cur.AgentOrder, cur.AgentsHidden, cur.AgentsShown
 		in.Window, in.WindowMaximised, in.WindowAt = cur.Window, cur.WindowMaximised, cur.WindowAt // the window's own, as it was last resized and moved

@@ -19941,6 +19941,7 @@ function renderSettings() {
   $("#claudeWarmSub").textContent = t("One tiny request through Claude Code (Haiku) starts the next window at once")
     + (s.claudeWarmed ? " · " + t("last started {when}", { when: syncWhen(s.claudeWarmed) }) : "");
   // and the 5-hour windows started at times of day, so they line up with it
+  renderWarmZone(s, keep);
   renderWarmAt($("#warmAtSegs"), $("#warmAtSub"), warmTimes(s.codexWarmAts, s.codexWarmAt), s.codexWarmup, "",
     (v) => savePrefs({ ...keep, codexWarmAts: v, codexWarmAt: v[0] || "" }));
   renderWarmAt($("#claudeWarmAtSegs"), $("#claudeWarmAtSub"), warmTimes(s.claudeWarmAts, s.claudeWarmAt), s.claudeWarmup, t("Sent through Claude Code."),
@@ -21033,6 +21034,41 @@ function renderGitHubToken(s) {
   const get = el("button", "link", t("Create one ↗"));
   get.onclick = () => api("open", { url: "https://github.com/settings/tokens/new?description=magpie" }).catch(() => {});
   val.append(i, get, save);
+}
+
+// Zones the Time zone menu offers, beside This computer and whatever the
+// machine or the saved choice already names. An IANA name, shown as written.
+const WARM_ZONES = ["UTC", "Asia/Shanghai", "Asia/Hong_Kong", "Asia/Taipei", "Asia/Tokyo", "Asia/Singapore", "Asia/Seoul", "Asia/Kolkata", "Europe/London", "Europe/Berlin", "Europe/Paris", "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles", "America/Sao_Paulo", "Australia/Sydney", "Pacific/Auckland"];
+
+// renderWarmZone is Settings › Allowances' Time zone: the zone daily warm-up
+// times (06:00) are read in. Empty is this computer, which in Docker is
+// the container's clock. The menu is the app's own.
+function renderWarmZone(s, keep) {
+  const b = $("#warmZonePick");
+  if (!b) return;
+  const chosen = s.warmZone || "";
+  const sub = $("#warmZoneSub");
+  const line = t("Daily warm-up times, such as 06:00, are read in this zone");
+  sub.textContent = line;
+  sub.title = t("Codex and Claude daily warm-up, and an account's own time, use this zone. This computer follows the machine: in Docker that is UTC unless TZ is set or the host's /etc/localtime is mounted. Daily check-in still follows each vendor's day, which is Beijing.");
+  const here = s.localZone ? t("This computer ({zone})", { zone: s.localZone }) : t("This computer");
+  b.dataset.value = chosen;
+  b.classList.toggle("set", !!chosen);
+  b.setAttribute("aria-label", t("Time zone"));
+  b.replaceChildren(el("span", "", chosen || here), svg(CHEV, 11, 1.6));
+  b.onclick = (e) => {
+    e.stopPropagation();
+    if (b.classList.contains("open")) return closeProtoMenu();
+    const zones = [...WARM_ZONES];
+    for (const z of [s.localZone, chosen]) if (z && !zones.includes(z)) zones.unshift(z);
+    openProtoMenu(b, [
+      { v: "", name: here, note: "", literalName: true },
+      ...zones.map((z) => ({ v: z, name: z, note: "", literalName: true })),
+    ], chosen, (v) => {
+      if (v === chosen) return;
+      savePrefs({ ...keep, warmZone: v });
+    }, "Time zone", "sess-menu", "right", false, "Find a time zone");
+  };
 }
 
 // warmTimes is a daily warm-up's times of day as settings keep them: the
@@ -22799,7 +22835,7 @@ function prefsKeep(s) {
     trayUsages: s.trayUsages || [],
     redact: !!s.redact, redactPersonal: !!s.redactPersonal, redactKinds: s.redactKinds || {}, redactWords: s.redactWords || [], redactWordsAnyCase: !!s.redactWordsAnyCase, redactWordsWhole: !!s.redactWordsWhole, redactShape: !!s.redactShape, codexWarmup: s.codexWarmup || "",
     claudeWarmup: s.claudeWarmup || "", codexWarmAt: s.codexWarmAt || "", claudeWarmAt: s.claudeWarmAt || "",
-    codexWarmAts: warmTimes(s.codexWarmAts, s.codexWarmAt), claudeWarmAts: warmTimes(s.claudeWarmAts, s.claudeWarmAt), workbuddyCheckin: !!s.workbuddyCheckin, traeCheckin: !!s.traeCheckin, minimaxCheckin: !!s.minimaxCheckin, qoderCheckin: !!s.qoderCheckin, noStats: !!s.noStats, noUsageStats: !!s.noUsageStats, signInLinkOnly: !!s.signInLinkOnly,
+    codexWarmAts: warmTimes(s.codexWarmAts, s.codexWarmAt), claudeWarmAts: warmTimes(s.claudeWarmAts, s.claudeWarmAt), warmZone: s.warmZone || "", workbuddyCheckin: !!s.workbuddyCheckin, traeCheckin: !!s.traeCheckin, minimaxCheckin: !!s.minimaxCheckin, qoderCheckin: !!s.qoderCheckin, noStats: !!s.noStats, noUsageStats: !!s.noUsageStats, signInLinkOnly: !!s.signInLinkOnly,
     memberModel: !!s.memberModel, noLoopGuard: !!s.noLoopGuard, claudeLeanPrompt: !!s.claudeLeanPrompt, claudePrintMode: !!s.claudePrintMode, refusalRetries: s.refusalRetries ?? null,
     noUpdatePill: !!s.noUpdatePill, noAutoUpdate: !!s.noAutoUpdate, updateEvery: s.updateEvery || 360, autoRestart: !!s.autoRestart, noAutoDownload: !!s.noAutoDownload, updateChannel: s.updateChannel || "",
     trayUsage: s.trayUsage || "", trayUsageEvery: s.trayUsageEvery || 3, trayNoLogos: !!s.trayNoLogos, trayNoBird: !!s.trayNoBird, trayPace: !!s.trayPace, trayNoCost: !!s.trayNoCost, trayWindows: s.trayWindows || {}, vision: s.vision || "", visionEffort: s.visionEffort || "", searcherEffort: s.searcherEffort || "", imageGen: s.imageGen || "", imageTimeout: s.imageTimeout || 0, classifyTimeout: s.classifyTimeout || 0, searcher: s.searcher || "", searchFirst: s.searchFirst || "", currency: s.currency || "usd",

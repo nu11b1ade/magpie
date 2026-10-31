@@ -39,6 +39,11 @@ COPY --from=build --chown=65532:65532 /config /config
 # (~/.codex, ~/.claude…, under HOME), and the cache holding Bun and the
 # model catalog. magpie makes the folders a volume from an older image
 # lacks.
+# The image does not set TZ, so the clock stays UTC. Docker does not copy
+# the host's zone in. Set TZ to an IANA name, or mount the host's
+# /etc/localtime read-only; the manual's Docker section has both.
+# Settings → Allowances → Time zone reads daily warm-up times (06:00) in the
+# zone named there, or on this clock when left on This computer.
 ENV HOME=/config/home \
     XDG_CONFIG_HOME=/config \
     XDG_CACHE_HOME=/config/cache \

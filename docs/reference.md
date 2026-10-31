@@ -2762,6 +2762,58 @@ the container as healthy (Compose: `depends_on: condition: service_healthy`)
 with no curl in the image. Bind-mounting a folder at `/config` in place of a
 named volume works too; it has to be writable by uid 65532.
 
+#### Time zone
+
+The image does not set `TZ`. Debian 12 slim's clock is UTC, and Docker does
+not copy the host's zone into the container, so a host kept on
+`Asia/Shanghai` (an Aliyun machine in Silicon Valley whose wall clock is
+Shanghai, for example) still runs magpie on UTC. Times of day magpie stores
+as `HH:MM` — a daily warm-up's `06:00`, and a ChatGPT account's own time —
+are read on that clock unless you name a zone. Eight hours off is the usual
+result of typing Shanghai's `06:00` into a UTC container.
+
+The image stays on UTC on purpose: a published image cannot know the host's
+zone, and guessing would change every install. Align it in either of these
+ways. One is enough.
+
+`TZ` is an IANA name. magpie carries Go's zone database, so the image needs
+no `tzdata` package:
+
+```sh
+docker run -d --name magpie \
+  -e TZ=Asia/Shanghai \
+  -p 127.0.0.1:3425:3425 -p 127.0.0.1:3430:3430 \
+  -v magpie-config:/config \
+  ghcr.io/yetone/magpie:latest
+```
+
+Or mount the host's zone files, read-only. `/etc/localtime` is what magpie
+reads when `TZ` is unset (`provider.LocalZone`); `/etc/timezone` is a
+Debian/Ubuntu file and is absent on some hosts. On Docker Desktop for Mac
+the mount is the Linux VM's zone, often UTC, not the Mac's menu-bar clock.
+Prefer `TZ` when the zone you want is not the host file's — a US datacenter
+whose clock you keep on Shanghai time is `TZ=Asia/Shanghai`, not a mount of
+`America/Los_Angeles`.
+
+```yaml
+volumes:
+  - ./config:/config
+  - /etc/localtime:/etc/localtime:ro
+  - /etc/timezone:/etc/timezone:ro
+```
+
+With neither, the container clock is UTC. **Settings → Allowances → Time zone**
+still applies to the warm-up times: leave it on **This computer** and they
+follow the container (UTC, or whatever `TZ` and `/etc/localtime` made it),
+or pick `Asia/Shanghai` and `06:00` is Shanghai's `06:00` even while the
+process clock stays UTC. The default is this computer, so an install that
+never opens the row behaves as before. Daily check-in is not this setting:
+each vendor's day stays that vendor's, which is Beijing.
+
+Setting `TZ` also keeps the process clock on the same zone as the host or
+the region you treat the machine as. That is the container's clock for
+everything else magpie prints; the Settings zone is only the warm-up times.
+
 #### NAS with agents on other machines
 
 Magpie can run on a headless NAS as a shared gateway even when the agents that
@@ -2806,8 +2858,14 @@ services:
       MAGPIE_ADDR: 0.0.0.0:3425
       MAGPIE_PUBLIC_URL: http://<nas-address>:3425
       MAGPIE_WEB_KEY: <random-key>
+      # Optional. The image's clock is UTC. An IANA name aligns it with the
+      # host, or with a region you keep the machine on.
+      # TZ: Asia/Shanghai
     volumes:
       - ./config:/config
+      # Optional, instead of TZ: the host's zone files, read-only.
+      # - /etc/localtime:/etc/localtime:ro
+      # - /etc/timezone:/etc/timezone:ro
     command: [web, --addr, 0.0.0.0:3430, --no-open]
 ```
 

@@ -2,6 +2,9 @@ package provider
 
 // Starting the 5-hour windows at times of day (settings' CodexWarmAts and
 // ClaudeWarmAts, one or several, #1260), not only as the last one resets.
+// The times are read in settings' WarmZone when one is named, and on this
+// computer's clock otherwise: a container whose clock is UTC keeps 06:00
+// at Shanghai's 06:00 once that zone is chosen.
 // A 5-hour window starts at an account's first request, so a day that
 // begins at 9 fits two before the evening; one started at 6, while the
 // user is asleep, runs out at 11, and the day fits three. Each day at each
@@ -36,9 +39,28 @@ import (
 // wakes within it sends it then.
 const dailySlack = time.Hour
 
+// warmLoc is the zone a daily warm-up's times of day are read in.
+// Settings' WarmZone when it names one, else now's own zone (this
+// computer's clock: the container's in Docker). false when WarmZone names
+// a zone this magpie doesn't know, so a hand-edited name never fires the
+// times on the wrong clock.
+func warmLoc(now time.Time) (*time.Location, bool) {
+	name := strings.TrimSpace(settings.Load().WarmZone)
+	if name == "" {
+		return now.Location(), true
+	}
+	return zoneOf(name)
+}
+
 // dayStart is the latest start of any of ats (times of day, "06:00") at
-// or before now, in now's own zone; false when ats has none.
+// or before now, in the warm-up's zone; false when ats has none or the
+// zone isn't one magpie knows.
 func dayStart(ats []string, now time.Time) (time.Time, bool) {
+	loc, ok := warmLoc(now)
+	if !ok {
+		return time.Time{}, false
+	}
+	now = now.In(loc)
 	var latest time.Time
 	found := false
 	for _, at := range ats {
@@ -47,9 +69,9 @@ func dayStart(ats []string, now time.Time) (time.Time, bool) {
 			continue
 		}
 		y, mo, d := now.Date()
-		t := time.Date(y, mo, d, h, m, 0, 0, now.Location())
+		t := time.Date(y, mo, d, h, m, 0, 0, loc)
 		if t.After(now) {
-			t = time.Date(y, mo, d-1, h, m, 0, 0, now.Location())
+			t = time.Date(y, mo, d-1, h, m, 0, 0, loc)
 		}
 		if !found || t.After(latest) {
 			latest, found = t, true
@@ -70,7 +92,7 @@ func nextDayStart(ats []string, now time.Time) (time.Time, bool) {
 		}
 		y, mo, d := t.Date()
 		h, m, _ := t.Clock()
-		if t = time.Date(y, mo, d+1, h, m, 0, 0, now.Location()); !found || t.Before(first) {
+		if t = time.Date(y, mo, d+1, h, m, 0, 0, t.Location()); !found || t.Before(first) {
 			first, found = t, true
 		}
 	}
