@@ -370,9 +370,10 @@ func currentFX() fxJSON {
 // settingsJSON is the Settings page: the two choices plus the facts it shows.
 type settingsJSON struct {
 	settings.Settings
-	Version string `json:"version"`
-	Dir     string `json:"dir"`     // where magpie keeps its files, as shown
-	Gateway string `json:"gateway"` // the local endpoint
+	LocalZone string `json:"localZone"` // this computer's clock, the warm-up's default
+	Version   string `json:"version"`
+	Dir       string `json:"dir"`     // where magpie keeps its files, as shown
+	Gateway   string `json:"gateway"` // the local endpoint
 	// Builtins are the built-in plugins: each one's switch, whether it
 	// runs and what of it is in use (builtins.go)
 	Builtins []builtinJSON `json:"builtins"`
@@ -758,6 +759,7 @@ func settingsState() settingsJSON {
 		s.LANPublic = gateway.PublicURLs(s.LANURLs)
 	}
 	s.CodexWarmed, s.ClaudeWarmed = latest(provider.CodexWarmed()), latest(provider.ClaudeWarmed())
+	s.LocalZone = provider.LocalZone()
 	s.CodexUsers, s.ClaudeUsers = loginUsers("codex"), loginUsers("claude")
 	s.CodexAsyncHeld = agent.CodexAsyncHeld()
 	s.CodexCompactKeys = codexKeysText(agent.CodexCompactHeld(""))
@@ -1422,6 +1424,10 @@ func Handler(w Windows, gw *gateway.Server) http.Handler {
 		// nor whether a value masked for the first time is told (Must2333)
 		if _, sent := fields["maskAlert"]; !sent {
 			in.MaskAlert = cur.MaskAlert
+		}
+		// nor the clock daily warm-up times use; empty chooses the local clock
+		if _, sent := fields["warmZone"]; !sent {
+			in.WarmZone = cur.WarmZone
 		}
 		in.AgentOrder, in.AgentsHidden, in.AgentsShown = cur.AgentOrder, cur.AgentsHidden, cur.AgentsShown
 		in.Window, in.WindowMaximised, in.WindowAt = cur.Window, cur.WindowMaximised, cur.WindowAt // the window's own, as it was last resized and moved

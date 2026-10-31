@@ -19928,6 +19928,7 @@ function renderSettings() {
   $("#loginSegs").replaceChildren(segs([["off", t("Off")], ["on", t("On")]], s.login ? "on" : "off", (v) =>
     prefWrite(api("settings/login", { on: v === "on" }))));
   renderLoginAllow(s);
+  renderWarmZone(s, keep);
   // Codex's and Claude Code's warm-ups and WorkBuddy's check-in, one tab
   // each over one card, the rows' names not saying the service again.
   // A ChatGPT account's next window started as soon as the last resets
@@ -21050,6 +21051,44 @@ function nextWarmTime(ats) {
   let at = pad((h + 5) % 24) + ":" + pad(m);
   for (let i = 0; ats.includes(at) && i < 24; i++) at = pad(i) + ":00";
   return at;
+}
+
+
+// renderWarmZone draws Settings › Allowances' Time zone: daily warm-up
+// times of day are read in this zone. Empty follows this computer's clock
+// (localZone from the server: TZ or /etc/localtime in Docker).
+function renderWarmZone(s, keep) {
+  const local = s.localZone || "";
+  const zone = s.warmZone || "";
+  const sub = $("#warmZoneSub");
+  sub.textContent = zone
+    ? t("Daily warm-up times are read in {zone}", { zone })
+    : t("Daily warm-up times follow this computer's clock{zone}", {
+        zone: local ? " (" + local + ")" : "",
+      });
+  sub.title = t("Check-in stays on each vendor's Beijing day. Align Docker with TZ or /etc/localtime, or pick a zone here so 06:00 is that zone even on a UTC container.");
+  const label = zone || (local ? t("This computer ({zone})", { zone: local }) : t("This computer"));
+  const btn = el("button", "text");
+  btn.type = "button";
+  btn.textContent = label;
+  btn.setAttribute("aria-haspopup", "menu");
+  btn.setAttribute("aria-expanded", "false");
+  btn.setAttribute("aria-label", t("Time zone"));
+  btn.onclick = (e) => {
+    e.stopPropagation();
+    const zones = (typeof Intl !== "undefined" && Intl.supportedValuesOf)
+      ? Intl.supportedValuesOf("timeZone")
+      : ["UTC", "Asia/Shanghai", "America/New_York", "America/Los_Angeles", "Europe/London"];
+    const opts = [
+      { v: "", name: local ? t("This computer ({zone})", { zone: local }) : t("This computer"), note: t("Container or host clock") },
+      ...zones.map((z) => ({ v: z, name: z, literalName: true, note: "" })),
+    ];
+    openProtoMenu(btn, opts, zone, (v) => {
+      if (v === zone) return;
+      savePrefs({ ...keep, warmZone: v || "" });
+    }, "Time zone", "", "left", false, t("Search time zones"));
+  };
+  $("#warmZonePick").replaceChildren(btn);
 }
 
 // renderWarmAt draws a daily warm-up's control: Off, or its times of day,
@@ -22799,7 +22838,7 @@ function prefsKeep(s) {
     trayUsages: s.trayUsages || [],
     redact: !!s.redact, redactPersonal: !!s.redactPersonal, redactKinds: s.redactKinds || {}, redactWords: s.redactWords || [], redactWordsAnyCase: !!s.redactWordsAnyCase, redactWordsWhole: !!s.redactWordsWhole, redactShape: !!s.redactShape, codexWarmup: s.codexWarmup || "",
     claudeWarmup: s.claudeWarmup || "", codexWarmAt: s.codexWarmAt || "", claudeWarmAt: s.claudeWarmAt || "",
-    codexWarmAts: warmTimes(s.codexWarmAts, s.codexWarmAt), claudeWarmAts: warmTimes(s.claudeWarmAts, s.claudeWarmAt), workbuddyCheckin: !!s.workbuddyCheckin, traeCheckin: !!s.traeCheckin, minimaxCheckin: !!s.minimaxCheckin, qoderCheckin: !!s.qoderCheckin, noStats: !!s.noStats, noUsageStats: !!s.noUsageStats, signInLinkOnly: !!s.signInLinkOnly,
+    codexWarmAts: warmTimes(s.codexWarmAts, s.codexWarmAt), claudeWarmAts: warmTimes(s.claudeWarmAts, s.claudeWarmAt), warmZone: s.warmZone || "", workbuddyCheckin: !!s.workbuddyCheckin, traeCheckin: !!s.traeCheckin, minimaxCheckin: !!s.minimaxCheckin, qoderCheckin: !!s.qoderCheckin, noStats: !!s.noStats, noUsageStats: !!s.noUsageStats, signInLinkOnly: !!s.signInLinkOnly,
     memberModel: !!s.memberModel, noLoopGuard: !!s.noLoopGuard, claudeLeanPrompt: !!s.claudeLeanPrompt, claudePrintMode: !!s.claudePrintMode, refusalRetries: s.refusalRetries ?? null,
     noUpdatePill: !!s.noUpdatePill, noAutoUpdate: !!s.noAutoUpdate, updateEvery: s.updateEvery || 360, autoRestart: !!s.autoRestart, noAutoDownload: !!s.noAutoDownload, updateChannel: s.updateChannel || "",
     trayUsage: s.trayUsage || "", trayUsageEvery: s.trayUsageEvery || 3, trayNoLogos: !!s.trayNoLogos, trayNoBird: !!s.trayNoBird, trayPace: !!s.trayPace, trayNoCost: !!s.trayNoCost, trayWindows: s.trayWindows || {}, vision: s.vision || "", visionEffort: s.visionEffort || "", searcherEffort: s.searcherEffort || "", imageGen: s.imageGen || "", imageTimeout: s.imageTimeout || 0, classifyTimeout: s.classifyTimeout || 0, searcher: s.searcher || "", searchFirst: s.searchFirst || "", currency: s.currency || "usd",

@@ -53,5 +53,10 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 
 EXPOSE 3425 3430
 
+# The image does not set TZ, so the clock stays UTC. Docker does not copy
+# the host's zone in. Set TZ to an IANA name, or mount the host's
+# /etc/localtime read-only; the manual's Docker section has both.
+# Settings → Allowances → Time zone reads daily warm-up times (06:00) in the
+# chosen zone even when the process clock stays UTC.
 ENTRYPOINT ["/magpie"]
 CMD ["serve"]

@@ -142,8 +142,11 @@ func (c codexWarmer) warmNow(ctx context.Context, which string, dayAts []string)
 	if settings.AccountDiscoveryOff() {
 		return nil
 	}
+	now, ok := warmClock(c.now())
+	if !ok {
+		return nil
+	}
 	st := readWarmState(c.path)
-	now := c.now()
 	own := c.owned()
 	usage := c.usage(ctx)
 	users := make([]string, 0, len(usage))
@@ -622,6 +625,10 @@ func warmLook(which string, at []string, own map[string]string, kicked bool, las
 		ats = append(ats, a)
 	}
 	if which == "" && !slices.ContainsFunc(ats, func(a string) bool { return a != "" }) {
+		return false
+	}
+	now, ok := warmClock(now)
+	if !ok {
 		return false
 	}
 	return kicked || last.IsZero() || now.Sub(last) >= codexWarmEvery ||

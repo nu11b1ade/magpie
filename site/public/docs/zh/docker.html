@@ -79,6 +79,7 @@
     <a href="#volume">保存了什么</a>
     <a href="#env">环境变量</a>
     <a href="#share">网关密钥与其他机器</a>
+    <a href="#timezone">时区</a>
     <a href="#compose">在 NAS 上用 Docker Compose</a>
     <a href="#ops">健康检查、终端与更新</a>
   </aside>
@@ -164,6 +165,7 @@ docker logs magpie</pre>
       <tr><td><code>MAGPIE_WEB_KEY</code></td><td>Web 界面的 key，重启后不变（16 个字符以上）</td></tr>
       <tr><td><code>MAGPIE_TLS_CERT</code>、<code>MAGPIE_TLS_KEY</code></td><td>挂载进容器的 PEM 证书（后面跟着证书链）和私钥：其他机器只能用 <code>https://</code> 访问网关和 Web 界面，它们发来的明文 HTTP 返回 400。文件变了会重新读取，续期不用重启。只给一个，或文件读不出来，magpie 不会启动。<code>MAGPIE_PUBLIC_URL</code> 也写成 <code>https://</code>。</td></tr>
       <tr><td><code>MAGPIE_ALLOW_IPS</code></td><td>其他机器只能从这些地址访问网关和 Web 界面，写 IP 或 CIDR 网段：<code>203.0.113.7,10.0.0.0/8,2001:db8::/32</code>。其他地址即使带着网关密钥也会得到 403。不设置则所有地址都可访问，各自仍需密钥。见<a href="#allow">允许的地址</a>。</td></tr>
+      <tr><td><code>TZ</code></td><td>容器时钟的 IANA 时区（如 <code>Asia/Shanghai</code>）。不设则镜像保持 UTC。见 <a href="#timezone">时区</a>。</td></tr>
       <tr><td><code>HOME</code>、<code>XDG_CONFIG_HOME</code>、<code>XDG_CACHE_HOME</code>、<code>XDG_DATA_HOME</code>、<code>XDG_STATE_HOME</code></td><td>镜像已设为上面 <code>/config</code> 下的目录，不要改</td></tr>
     </table></div>
 
@@ -177,6 +179,18 @@ docker logs magpie</pre>
     <p><b>从旧镜像升级。</b>容器外发送 <code>magpie</code> 或其他非启用网关密钥的 Agent，现在会收到 401（“the API key sent is not an enabled magpie gateway key”）。按上面的步骤给它生成一个密钥，填进 Agent 的设置。已经发送网关密钥的 Agent，以及用网关密钥添加的远程 magpie，照常工作。</p>
     <p id="allow"><b>允许的地址。</b>在公网主机上，用 <code>-e MAGPIE_ALLOW_IPS=203.0.113.7,10.0.0.0/8</code> 写上你的客户端所在的地址。来自其他地址的请求在看密钥之前就被拒绝（403），所以泄露的密钥从别处也用不了；拒绝信息和容器日志都会写出请求来自的地址。magpie 判断的是连接本身的地址，从不采信 <code>X-Forwarded-For</code> 头；写错的条目不会放行任何地址，而不是放行所有地址。Docker 默认的 bridge 网络会把客户端自己的地址传进容器，但宿主机自己发出的请求来自 bridge 的网关（<code>172.17.0.1</code>），Docker Desktop 和 rootless Docker 则把所有客户端显示成它们自己的一个地址：把它加上，或看 403 里写的是哪个。在反向代理或隧道后面时，所有请求都来自代理的地址，请在代理那里限制谁能访问。桌面版里同一个列表在 <span class="ui">设置</span> → <span class="ui">网络与共享</span> → <span class="ui">允许的地址</span>。</p>
     <div class="callout"><b>跨互联网访问时，优先用 VPN</b>（如 Tailscale 或 WireGuard），不要直接开放 3425。容器前面的反向代理或隧道也算网络：它的客户端和其他机器一样需要网关密钥。</div>
+
+
+    <h2 id="timezone"><a class="anchor" href="#timezone">时区</a></h2>
+    <p>镜像不设置 <code>TZ</code>。容器里 Debian 的时钟是 UTC，Docker 也不会把宿主机时区拷进去。每日预热时刻按这个时钟解释，除非你在 <span class="ui">设置</span> → <span class="ui">额度</span> → <span class="ui">时区</span> 里另选，或把容器时钟对齐到宿主机。</p>
+    <p>用 <code>-e TZ=Asia/Shanghai</code>（任意 IANA 名；magpie 自带 Go 时区库，镜像不必装 <code>tzdata</code>），或只读挂载宿主机时区文件：</p>
+    <div class="code">
+      <span class="lang">Shell</span>
+      <pre>docker run … -e TZ=Asia/Shanghai …
+# 或
+docker run … -v /etc/localtime:/etc/localtime:ro -v /etc/timezone:/etc/timezone:ro …</pre>
+    </div>
+    <p>想要的时区与宿主机文件不一致时优先用 <code>TZ</code>——美国机房但希望按上海时间跑，应设 <code>TZ=Asia/Shanghai</code>，而不是挂载宿主机的 America/Los_Angeles。两者都不设时，把 <span class="ui">时区</span> 留在 <span class="ui">本机</span> 即为 UTC，或选 <code>Asia/Shanghai</code>，这样即便进程时钟仍是 UTC，<code>06:00</code> 也按上海解释。每日签到仍按各厂商的北京日。</p>
 
     <h2 id="compose"><a class="anchor" href="#compose">在 NAS 上用 Docker Compose</a></h2>
     <div class="code">
@@ -193,8 +207,11 @@ docker logs magpie</pre>
     environment:
       MAGPIE_PUBLIC_URL: http://&lt;nas-address&gt;:3425
       MAGPIE_WEB_KEY: &lt;random-key&gt;
+      <span class="c"># TZ: Asia/Shanghai</span>
     volumes:
       - ./config:/config
+      <span class="c"># - /etc/localtime:/etc/localtime:ro</span>
+      <span class="c"># - /etc/timezone:/etc/timezone:ro</span>
     command: [web, --addr, 0.0.0.0:3430, --no-open]</pre>
     </div>
     <p>然后：<code>sudo chown -R 65532:65532 ./config</code>，<code>docker compose up -d</code>，通过 SSH 隧道打开 <code>http://127.0.0.1:3430/?k=&lt;random-key&gt;</code>，添加供应商，给每台机器生成一个网关密钥。要让其他机器访问网关，把它那一行改成 <code>"3425:3425"</code>（或 NAS 的局域网、VPN 地址），重新 <code>docker compose up -d</code>。</p>

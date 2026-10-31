@@ -2762,6 +2762,49 @@ the container as healthy (Compose: `depends_on: condition: service_healthy`)
 with no curl in the image. Bind-mounting a folder at `/config` in place of a
 named volume works too; it has to be writable by uid 65532.
 
+#### Time zone
+
+The image does not set `TZ`. Debian 12 slim's clock is UTC, and Docker does
+not copy the host's zone into the container. Daily warm-up times
+(`codexWarmAts` and the like) follow that clock unless you pick a zone in
+**Settings → Allowances → Time zone**, or you align the container with the
+host.
+
+`TZ` is an IANA name. magpie carries Go's zone database, so the image needs
+no `tzdata` package:
+
+```sh
+docker run -d --name magpie \
+  -e TZ=Asia/Shanghai \
+  -p 127.0.0.1:3425:3425 -p 127.0.0.1:3430:3430 \
+  -v magpie-config:/config \
+  ghcr.io/yetone/magpie
+```
+
+Or mount the host's zone files, read-only. `/etc/localtime` is what magpie
+reads when `TZ` is unset (`provider.LocalZone`); `/etc/timezone` is a
+Debian convenience for tools that read that file:
+
+Prefer `TZ` when the zone you want is not the host file's — a US datacenter
+whose clock you keep on Shanghai time is `TZ=Asia/Shanghai`, not a mount of
+the host's America/Los_Angeles files.
+
+```yaml
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
+```
+
+With neither, the container clock is UTC. **Settings → Allowances → Time zone**
+is independent of that: leave it on *This computer* and warm-up times
+follow the container (UTC, or whatever `TZ` and `/etc/localtime` made it),
+or pick `Asia/Shanghai` and `06:00` is Shanghai's `06:00` even while the
+process clock stays UTC. Daily check-in (WorkBuddy, Trae, MiniMax, Qoder)
+stays on each vendor's Beijing day either way.
+
+Setting `TZ` also keeps the process clock on the same zone as the host or
+the region you want the container to look like (account risk and logs alike).
+
 #### NAS with agents on other machines
 
 Magpie can run on a headless NAS as a shared gateway even when the agents that
@@ -2806,8 +2849,12 @@ services:
       MAGPIE_ADDR: 0.0.0.0:3425
       MAGPIE_PUBLIC_URL: http://<nas-address>:3425
       MAGPIE_WEB_KEY: <random-key>
+      # TZ: Asia/Shanghai
     volumes:
       - ./config:/config
+      # Optional, instead of TZ: the host's zone files, read-only.
+      # - /etc/localtime:/etc/localtime:ro
+      # - /etc/timezone:/etc/timezone:ro
     command: [web, --addr, 0.0.0.0:3430, --no-open]
 ```
 

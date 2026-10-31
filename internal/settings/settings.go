@@ -249,8 +249,14 @@ type Settings struct {
 	// ClaudeWarmup is CodexWarmup for the Claude accounts, the request
 	// sent through Claude Code.
 	ClaudeWarmup string `json:"claudeWarmup,omitempty"`
+	// WarmZone is the IANA time zone those times of day are read in
+	// ("Asia/Shanghai"): CodexWarmAts, ClaudeWarmAts and CodexWarmAtOf.
+	// Empty, the default, is this computer's clock — in Docker, UTC unless
+	// TZ or /etc/localtime says otherwise — so a 06:00 typed for Shanghai
+	// is not run as UTC's 06:00. An unknown name is refused on save.
+	WarmZone string `json:"warmZone,omitempty"`
 	// CodexWarmAt starts each ChatGPT account's 5-hour window at a time of
-	// day of the user's choosing, local "15:04", with the same tiny
+	// day of the user's choosing, "15:04" in WarmZone, with the same tiny
 	// request: an account whose 5-hour window isn't running then gets one,
 	// so the windows line up with the day (06:00 gives three by 21:00, where
 	// the first use at 9 gives two by the end of it); "" off. It works
@@ -1760,6 +1766,12 @@ func saveOwn(s Settings, recording, reads bool) error {
 	}
 	if !slices.Contains(Warmups, s.ClaudeWarmup) {
 		return fmt.Errorf("claude warm-up must be off, week or all, not %q", s.ClaudeWarmup)
+	}
+	s.WarmZone = strings.TrimSpace(s.WarmZone)
+	if s.WarmZone != "" {
+		if _, err := time.LoadLocation(s.WarmZone); err != nil {
+			return fmt.Errorf("a warm-up time zone is an IANA name such as Asia/Shanghai, or empty for this computer's clock, not %q", s.WarmZone)
+		}
 	}
 	for _, at := range slices.Concat(s.CodexWarmAts, s.ClaudeWarmAts) {
 		if _, _, ok := Clock(at); !ok {

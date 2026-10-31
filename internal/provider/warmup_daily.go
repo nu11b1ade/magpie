@@ -36,6 +36,20 @@ import (
 // wakes within it sends it then.
 const dailySlack = time.Hour
 
+// warmClock reads daily warm-up times in their chosen zone, or now's own
+// when none is set. An unknown zone in a hand-edited file starts nothing.
+func warmClock(now time.Time) (time.Time, bool) {
+	zone := settings.Load().WarmZone
+	if zone == "" {
+		return now, true
+	}
+	loc, ok := zoneOf(zone)
+	if !ok {
+		return time.Time{}, false
+	}
+	return now.In(loc), true
+}
+
 // dayStart is the latest start of any of ats (times of day, "06:00") at
 // or before now, in now's own zone; false when ats has none.
 func dayStart(ats []string, now time.Time) (time.Time, bool) {
